@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import Icon from '@/components/ui/icon';
 
 interface GameResult {
@@ -13,6 +15,8 @@ interface GameResult {
   probability: number;
   timestamp: Date;
   payout: number;
+  bet: number;
+  tokensWon: number;
 }
 
 interface Statistics {
@@ -32,13 +36,30 @@ const Index = () => {
   });
   const [isSpinning, setIsSpinning] = useState(false);
   const [currentResult, setCurrentResult] = useState<string>('');
+  const [tokens, setTokens] = useState<number>(() => {
+    const saved = localStorage.getItem('casino-tokens');
+    return saved ? parseInt(saved) : 100;
+  });
+  const [currentBet, setCurrentBet] = useState<number>(10);
+  const [lastWin, setLastWin] = useState<number>(0);
+
+  // Функция сохранения токенов
+  useEffect(() => {
+    localStorage.setItem('casino-tokens', tokens.toString());
+  }, [tokens]);
+
+  // Проверка возможности сделать ставку
+  const canPlaceBet = (betAmount: number) => {
+    return tokens >= betAmount && betAmount > 0;
+  };
 
   // Симулятор рулетки
   const spinRoulette = () => {
-    if (isSpinning) return;
+    if (isSpinning || !canPlaceBet(currentBet)) return;
     
     setIsSpinning(true);
     setCurrentResult('Крутится...');
+    setTokens(prev => prev - currentBet);
     
     setTimeout(() => {
       const numbers = Array.from({ length: 37 }, (_, i) => i);
@@ -47,7 +68,19 @@ const Index = () => {
       const resultText = `${result} (${color === 'green' ? 'зелёный' : color === 'red' ? 'красный' : 'чёрный'})`;
       
       const probability = result === 0 ? 2.7 : (color === 'red' || color === 'black' ? 48.6 : 0);
-      const payout = result === 0 ? 35 : (Math.random() > 0.5 ? 2 : 0);
+      let tokensWon = 0;
+      let payout = 0;
+      
+      if (result === 0) {
+        tokensWon = currentBet * 35;
+        payout = 35;
+      } else if (Math.random() > 0.5) {
+        tokensWon = currentBet * 2;
+        payout = 2;
+      }
+      
+      setTokens(prev => prev + tokensWon);
+      setLastWin(tokensWon);
       
       const newResult: GameResult = {
         id: Date.now().toString(),
@@ -55,7 +88,9 @@ const Index = () => {
         result: resultText,
         probability,
         timestamp: new Date(),
-        payout
+        payout,
+        bet: currentBet,
+        tokensWon
       };
       
       setGameHistory(prev => [newResult, ...prev.slice(0, 9)]);
@@ -69,6 +104,10 @@ const Index = () => {
 
   // Симулятор костей
   const rollDice = () => {
+    if (!canPlaceBet(currentBet)) return;
+    
+    setTokens(prev => prev - currentBet);
+    
     const dice1 = Math.floor(Math.random() * 6) + 1;
     const dice2 = Math.floor(Math.random() * 6) + 1;
     const sum = dice1 + dice2;
@@ -78,13 +117,29 @@ const Index = () => {
       8: 13.89, 9: 11.11, 10: 8.33, 11: 5.56, 12: 2.78
     };
     
+    let tokensWon = 0;
+    let payout = 0;
+    
+    if (sum === 7) {
+      tokensWon = currentBet * 4;
+      payout = 4;
+    } else if (sum === 2 || sum === 12) {
+      tokensWon = currentBet * 30;
+      payout = 30;
+    }
+    
+    setTokens(prev => prev + tokensWon);
+    setLastWin(tokensWon);
+    
     const newResult: GameResult = {
       id: Date.now().toString(),
       game: 'Кости',
       result: `${dice1} + ${dice2} = ${sum}`,
       probability: probabilities[sum],
       timestamp: new Date(),
-      payout: sum === 7 ? 4 : (sum === 2 || sum === 12 ? 30 : 0)
+      payout,
+      bet: currentBet,
+      tokensWon
     };
     
     setGameHistory(prev => [newResult, ...prev.slice(0, 9)]);
@@ -93,6 +148,10 @@ const Index = () => {
 
   // Симулятор карт
   const drawCard = () => {
+    if (!canPlaceBet(currentBet)) return;
+    
+    setTokens(prev => prev - currentBet);
+    
     const suits = ['♠', '♥', '♦', '♣'];
     const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
     
@@ -102,13 +161,29 @@ const Index = () => {
     const isRed = suit === '♥' || suit === '♦';
     const probability = isRed ? 50 : 50;
     
+    let tokensWon = 0;
+    let payout = 0;
+    
+    if (['J', 'Q', 'K', 'A'].includes(value)) {
+      tokensWon = currentBet * 3;
+      payout = 3;
+    } else {
+      tokensWon = currentBet * 1;
+      payout = 1;
+    }
+    
+    setTokens(prev => prev + tokensWon);
+    setLastWin(tokensWon);
+    
     const newResult: GameResult = {
       id: Date.now().toString(),
       game: 'Карты',
       result: `${value}${suit}`,
       probability,
       timestamp: new Date(),
-      payout: ['J', 'Q', 'K', 'A'].includes(value) ? 3 : 1
+      payout,
+      bet: currentBet,
+      tokensWon
     };
     
     setGameHistory(prev => [newResult, ...prev.slice(0, 9)]);
@@ -147,9 +222,21 @@ const Index = () => {
             <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-casino-gold bg-clip-text text-transparent">
               🎰 Образовательное Казино
             </h1>
-            <Badge variant="outline" className="text-sm">
-              Симулятор вероятностей
-            </Badge>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 bg-casino-gold/10 border border-casino-gold/20 rounded-lg px-4 py-2">
+                <Icon name="Coins" size={20} className="text-casino-gold" />
+                <span className="font-bold text-xl">{tokens}</span>
+                <span className="text-sm text-muted-foreground">токенов</span>
+              </div>
+              {lastWin > 0 && (
+                <Badge className="bg-green-500 animate-pulse">
+                  +{lastWin} 🪙
+                </Badge>
+              )}
+              <Badge variant="outline" className="text-sm">
+                Симулятор вероятностей
+              </Badge>
+            </div>
           </div>
         </div>
       </header>
@@ -160,9 +247,86 @@ const Index = () => {
           <h2 className="text-5xl font-bold text-white mb-4">
             Изучайте теорию вероятностей
           </h2>
-          <p className="text-xl text-white/80 mb-8 max-w-2xl mx-auto">
+          <p className="text-xl text-white/80 mb-6 max-w-2xl mx-auto">
             Интерактивные симуляторы казино для понимания математических основ азартных игр
           </p>
+          
+          {/* Betting Controls */}
+          <Card className="max-w-md mx-auto bg-background/90 backdrop-blur-sm">
+            <CardContent className="py-4">
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <Label htmlFor="bet-amount" className="text-sm font-medium">Ставка</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setCurrentBet(Math.max(1, currentBet - 5))}
+                      disabled={currentBet <= 5}
+                    >
+                      -5
+                    </Button>
+                    <Input
+                      id="bet-amount"
+                      type="number"
+                      value={currentBet}
+                      onChange={(e) => setCurrentBet(Math.max(1, Math.min(tokens, parseInt(e.target.value) || 1)))}
+                      className="text-center"
+                      min="1"
+                      max={tokens}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setCurrentBet(Math.min(tokens, currentBet + 5))}
+                      disabled={currentBet >= tokens}
+                    >
+                      +5
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setCurrentBet(Math.min(tokens, 25))}
+                    disabled={tokens < 25}
+                  >
+                    25
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setCurrentBet(Math.min(tokens, 50))}
+                    disabled={tokens < 50}
+                  >
+                    50
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setCurrentBet(tokens)}
+                    disabled={tokens === 0}
+                  >
+                    Всё
+                  </Button>
+                </div>
+              </div>
+              {tokens === 0 && (
+                <div className="mt-3 text-center">
+                  <Button
+                    onClick={() => {
+                      setTokens(100);
+                      setLastWin(0);
+                    }}
+                    className="bg-green-500 hover:bg-green-600"
+                  >
+                    Получить 100 токенов 🎁
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {/* Game Simulators */}
@@ -191,10 +355,10 @@ const Index = () => {
               </div>
               <Button 
                 onClick={spinRoulette} 
-                disabled={isSpinning}
-                className="w-full bg-primary hover:bg-primary/90 transition-all duration-200 hover:scale-105 active:scale-95"
+                disabled={isSpinning || !canPlaceBet(currentBet)}
+                className="w-full bg-primary hover:bg-primary/90 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50"
               >
-                {isSpinning ? 'Крутится...' : 'Крутить рулетку'}
+                {isSpinning ? 'Крутится...' : `Крутить (${currentBet} 🪙)`}
               </Button>
             </CardContent>
           </Card>
@@ -221,9 +385,10 @@ const Index = () => {
               </div>
               <Button 
                 onClick={rollDice}
-                className="w-full bg-casino-gold hover:bg-casino-gold/90 text-white transition-all duration-200 hover:scale-105 active:scale-95"
+                disabled={!canPlaceBet(currentBet)}
+                className="w-full bg-casino-gold hover:bg-casino-gold/90 text-white transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50"
               >
-                Бросить кости
+                Бросить кости ({currentBet} 🪙)
               </Button>
             </CardContent>
           </Card>
@@ -250,9 +415,10 @@ const Index = () => {
               </div>
               <Button 
                 onClick={drawCard}
-                className="w-full bg-secondary hover:bg-secondary/90 transition-all duration-200 hover:scale-105 active:scale-95"
+                disabled={!canPlaceBet(currentBet)}
+                className="w-full bg-secondary hover:bg-secondary/90 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50"
               >
-                Тянуть карту
+                Тянуть карту ({currentBet} 🪙)
               </Button>
             </CardContent>
           </Card>
@@ -293,10 +459,13 @@ const Index = () => {
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          {game.payout > 0 ? (
-                            <Badge className="bg-green-500">+{game.payout}x</Badge>
+                          <Badge variant="outline" className="text-xs">
+                            Ставка: {game.bet} 🪙
+                          </Badge>
+                          {game.tokensWon > 0 ? (
+                            <Badge className="bg-green-500">+{game.tokensWon} 🪙</Badge>
                           ) : (
-                            <Badge variant="destructive">0x</Badge>
+                            <Badge variant="destructive">-{game.bet} 🪙</Badge>
                           )}
                           <span className="text-sm text-muted-foreground">
                             {game.timestamp.toLocaleTimeString()}
